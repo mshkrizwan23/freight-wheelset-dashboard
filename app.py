@@ -1,42 +1,70 @@
+
 import streamlit as st
 import pandas as pd
 import sqlite3
 import datetime
+
+st.set_page_config(page_title="Freight Wheelset Dashboard", layout="wide")
+
+st.title("🚆 Freight Wagon Wheelset Tracker")
 
 # Connect to the SQLite database
 conn = sqlite3.connect("wheelsets_demo.db", check_same_thread=False)
 cursor = conn.cursor()
 
 # Load wheelset IDs
-def get_wheelset_ids():
-    query = "SELECT Wheelset_ID FROM Wheelset_Master"
-    return [row[0] for row in cursor.execute(query).fetchall()]
+wheelsets = pd.read_sql("SELECT Wheelset_ID FROM Wheelset_Master", conn)
+wheelset_ids = wheelsets["Wheelset_ID"].tolist()
 
-# Show wheelset details
-def show_wheelset_details(wheelset_id):
-    st.subheader(f"Asset Details - {wheelset_id}")
-    ws_query = f"SELECT * FROM Wheelset_Master WHERE Wheelset_ID = ?"
-    ws_data = cursor.execute(ws_query, (wheelset_id,)).fetchone()
-    if ws_data:
-        labels = ["Wheelset_ID", "Wagon_No", "Install_Date", "Current_Position", "Total_Mileage", "Current_Condition", "RUL_km"]
-        for label, value in zip(labels, ws_data):
-            st.write(f"**{label.replace('_', ' ')}**: {value}")
+# Select a wheelset
+selected_id = st.selectbox("Select Wheelset ID", wheelset_ids)
 
-        st.subheader("📋 Inspection History")
-        df = pd.read_sql_query("SELECT * FROM Inspection_Log WHERE Wheelset_ID = ?", conn, params=(wheelset_id,))
-        st.dataframe(df)
+# Fetch and show asset details
+asset_query = f"SELECT * FROM Wheelset_Master WHERE Wheelset_ID = '{selected_id}'"
+asset_data = pd.read_sql(asset_query, conn).iloc[0]
 
-        st.subheader("📈 Monitoring Data")
-        df2 = pd.read_sql_query("SELECT * FROM Monitoring_Data WHERE Wheelset_ID = ?", conn, params=(wheelset_id,))
-        st.dataframe(df2)
+st.subheader(f"Asset Details - {selected_id}")
+st.markdown("""
+**Wheelset ID**: {}  
+**Wagon No**: {}  
+**Install Date**: {}  
+**Current Position**: {}  
+**Total Mileage**: {}  
+**Current Condition**: {}  
+**Remaining Useful Life (RUL)**: {} km  
+""").format(
+    asset_data["Wheelset_ID"],
+    asset_data["Wagon_No"],
+    asset_data["Install_Date"],
+    asset_data["Current_Position"],
+    asset_data["Total_Mileage"],
+    asset_data["Current_Condition"],
+    asset_data["RUL_km"]
+)
+
+# Inspection Log Section
+st.subheader("📋 Wheelset Inspection Log")
+try:
+    inspections = pd.read_sql(f"SELECT * FROM Inspection_Log WHERE Wheelset_ID = '{selected_id}'", conn)
+    if inspections.empty:
+        st.info("No inspection records available.")
     else:
-        st.error("Wheelset not found in database.")
+        st.dataframe(inspections)
+except Exception as e:
+    st.error(f"Error loading inspection logs: {e}")
 
-# UI
-st.title("🚆 Freight Wagon Wheelset Tracker")
+# Monitoring Data Section
+st.subheader("📡 Condition Monitoring Data")
+try:
+    monitoring = pd.read_sql(f"SELECT * FROM Monitoring_Data WHERE Wheelset_ID = '{selected_id}'", conn)
+    if monitoring.empty:
+        st.info("No monitoring data available.")
+    else:
+        for metric in monitoring["Metric"].unique():
+            subset = monitoring[monitoring["Metric"] == metric]
+            st.markdown(f"**{metric}**")
+            st.line_chart(subset.set_index("Date")["Value"])
+except Exception as e:
+    st.error(f"Error loading monitoring data: {e}")
 
-wheelsets = get_wheelset_ids()
-selected = st.selectbox("Select Wheelset ID", wheelsets)
-
-if selected:
-    show_wheelset_details(selected)
+conn.close()
