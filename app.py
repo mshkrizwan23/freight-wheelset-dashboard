@@ -1,1 +1,2 @@
-# Placeholder for app.py
+# Streamlit app placeholder
+print('Hello from app.py')
