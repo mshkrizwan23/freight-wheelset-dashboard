@@ -1,62 +1,61 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 import matplotlib.pyplot as plt
+import sqlite3
 
-# Page setup
 st.set_page_config(layout="wide")
+
+# Title
 st.markdown("<h1 style='color:#D7263D;'>🚆 Freight Wagon Wheelset Tracker</h1>", unsafe_allow_html=True)
 
-# DB connection
+# Load database
 conn = sqlite3.connect("wheelsets_demo.db")
 cursor = conn.cursor()
 
-# Fetch Wheelset IDs
-wheelset_ids = pd.read_sql("SELECT Wheelset_ID FROM Wheelset_Master", conn)
-selected_id = st.selectbox("Select Wheelset ID", wheelset_ids["Wheelset_ID"].tolist())
+# Load Wheelset IDs
+wheelset_ids = pd.read_sql("SELECT DISTINCT Wheelset_ID FROM Wheelset_Master", conn)["Wheelset_ID"].tolist()
+wheelset_id = st.selectbox("Select Wheelset ID", wheelset_ids)
+
+# Asset Info
+asset_query = f"SELECT * FROM Wheelset_Master WHERE Wheelset_ID = '{wheelset_id}'"
+asset_info = pd.read_sql(asset_query, conn).iloc[0]
+
+# Inspection Info
+insp_query = f"SELECT * FROM Inspection_Data WHERE Wheelset_ID = '{wheelset_id}'"
+inspection_data = pd.read_sql(insp_query, conn)
+
+# Monitoring Flags
+monitoring_df = pd.read_csv("monitoring_flags.csv")
+flags_for_wheelset = monitoring_df[monitoring_df["Wheelset_ID"] == wheelset_id]
 
 # Layout
 col1, col2 = st.columns([1, 2])
 
-# ========== LEFT SIDE: ASSET SUMMARY ==========
 with col1:
-    asset_data = pd.read_sql(f"SELECT * FROM Wheelset_Master WHERE Wheelset_ID = '{selected_id}'", conn).iloc[0]
+    st.markdown("### 🗂️ Asset Summary")
+    st.write(f"**Wheelset ID:** {asset_info['Wheelset_ID']}")
+    st.write(f"**Wagon No:** {asset_info['Wagon_No']}")
+    st.write(f"**Install Date:** {asset_info['Install_Date']}")
+    st.write(f"**Current Position:** {asset_info['Position']}")
+    st.write(f"**Total Mileage:** {asset_info['Mileage']} km")
+    st.write(f"**Remaining Life:** {asset_info['Remaining_Life']} km")
+    st.write(f"**Condition:** {asset_info['Condition']}")
 
-    st.subheader("📄 Asset Summary")
-    st.markdown(f"""
-    **Wheelset ID:** {asset_data["Wheelset_ID"]}  
-    **Wagon No:** {asset_data["Wagon_No"]}  
-    **Install Date:** {asset_data["Install_Date"]}  
-    **Current Position:** {asset_data["Current_Position"]}  
-    **Total Mileage:** {asset_data["Total_Mileage"]} km  
-    **Remaining Life:** {asset_data["RUL_km"]} km  
-    **Condition:** {asset_data["Current_Condition"]}  
-    """)
-
-# ========== RIGHT SIDE: INSPECTION AND MONITORING ==========
 with col2:
-    st.subheader("🛠️ Inspection Data")
-    insp_df = pd.read_sql(f"SELECT * FROM Inspection_Log WHERE Wheelset_ID = '{selected_id}'", conn)
-    st.dataframe(insp_df)
+    st.markdown("### 🛠️ Inspection Data")
+    st.dataframe(inspection_data)
 
-    st.subheader("📊 Monitoring Trends")
-    mon_df = pd.read_sql(f"SELECT * FROM Monitoring_Data WHERE Wheelset_ID = '{selected_id}'", conn)
-
-    # Flag summary
-    alert_flags = mon_df[mon_df["Flag"] == "ALERT"]
-    if not alert_flags.empty:
-        st.warning("⚠️ Alert flags detected from condition monitoring systems!")
-
-    pivot = mon_df.pivot(index="Date", columns="Metric", values="Value")
-    st.bar_chart(pivot)
-
-# ========== ADDITIONAL PAGES ==========
-st.subheader("📈 Operational Mileage Logs")
-oplog = pd.read_sql(f"SELECT * FROM Wagon_Operational_Log WHERE Wheelset_ID = '{selected_id}'", conn)
-st.dataframe(oplog)
-
-st.subheader("🔧 Maintenance History")
-mntlog = pd.read_sql(f"SELECT * FROM Maintenance_Log WHERE Wheelset_ID = '{selected_id}'", conn)
-st.dataframe(mntlog)
-
-conn.close()
+# Monitoring flags
+st.markdown("### 📊 Monitoring Trends")
+if not flags_for_wheelset.empty:
+    st.dataframe(flags_for_wheelset)
+    for system in ["WILD", "ECM", "HABD"]:
+        sys_flag = flags_for_wheelset[flags_for_wheelset["System"] == system]
+        if not sys_flag.empty:
+            latest = sys_flag.sort_values("Date", ascending=False).iloc[0]
+            if latest["Flag"] == "ALERT":
+                st.error(f"🚨 {system} ALERT: {latest['Comment']}")
+            elif latest["Flag"] == "INFO":
+                st.warning(f"⚠️ {system} Info: {latest['Comment']}")
+else:
+    st.success("✅ No alerts or warnings found.")
