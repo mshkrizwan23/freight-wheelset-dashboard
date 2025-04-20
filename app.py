@@ -9,7 +9,7 @@ cursor = conn.cursor()
 
 # Title and logo
 st.set_page_config(layout="wide", page_title="Freight Wheelset Tracker")
-st.markdown("""<h1 style='color:#D7263D;'>🚆 Freight Wagon Wheelset Tracker</h1>"", unsafe_allow_html=True)
+st.markdown("""<h1 style='color:#D7263D;'>🚆 Freight Wagon Wheelset Tracker</h1>""", unsafe_allow_html=True)
 
 # Load wheelset options
 wheelset_ids = pd.read_sql("SELECT Wheelset_ID FROM Wheelset_Master", conn)
